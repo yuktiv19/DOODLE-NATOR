@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>DOODLE-NATOR AI</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; text-align: center; background: #f0f2f5; margin-top: 50px; }
+        #canvas { 
+            border: 5px solid #333; 
+            border-radius: 10px; 
+            background: white; 
+            cursor: crosshair; 
+            touch-action: none; /* Prevents scrolling on mobile while drawing */
+        }
+        .box { margin: 20px auto; padding: 20px; background: white; width: 400px; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        button { padding: 10px 20px; font-size: 16px; border: none; background: #007bff; color: white; border-radius: 5px; cursor: pointer; margin-top: 10px;}
+        button:hover { background: #0056b3; }
+        #status { color: #333; margin-top: 20px; }
+    </style>
+</head>
+<body>
+    <h1>DOODLE-NATOR</h1>
+    <div class="box">
+        <p>Draw a <b>Cat, Apple, Star, Fish, or House</b></p>
+        <canvas id="canvas" width="280" height="280"></canvas>
+        <br>
+        <button onclick="clearCanvas()">Clear Canvas</button>
+        <h2 id="status">Loading AI...</h2>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest"></script>
+    
+    <script>
+        let model;
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        const categories = ['apple', 'star', 'cat', 'fish', 'house'];
+
+        // 1. Initialise the Canvas and Model
+        async function init() {
+            try {
+                // Remove the './' for better local/GitHub compatibility
+                model = await tf.loadLayersModel('tfjs_model/model.json');
+                document.getElementById('status').innerText = "AI is ready! Start drawing.";
+                console.log("Model Loaded");
+            } catch (err) {
+                document.getElementById('status').innerText = "Model Load Failed: " + err.message;
+                console.error(err);
+            }
+            
+            // Set canvas background to white explicitly (crucial for prediction)
+            ctx.fillStyle = "white";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
+
+        // 2. Drawing Logic
+        let drawing = false;
+
+        canvas.addEventListener('mousedown', (e) => { drawing = true; draw(e); });
+        canvas.addEventListener('mouseup', () => { 
+            drawing = false; 
+            ctx.beginPath(); // Reset path so lines don't connect
+            predict(); 
+        });
+        canvas.addEventListener('mousemove', draw);
+
+        function draw(e) {
+            if (!drawing) return;
+            
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+
+            ctx.lineWidth = 14; // Slightly thicker for better AI recognition
+            ctx.lineCap = 'round';
+            ctx.strokeStyle = "black";
+
+            ctx.lineTo(x, y);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(x, y);
+        }
+
+        function clearCanvas() {
+            ctx.fillStyle = "white";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            document.getElementById('status').innerText = "Draw something!";
+        }
+
+        // 3. AI Prediction Logic
+        async function predict() {
+            if (!model) return;
+
+            const tensor = tf.tidy(() => {
+                // Convert canvas pixels to a tensor
+                let img = tf.browser.fromPixels(canvas, 1); 
+                
+                // Resize to 28x28 (standard for QuickDraw/MNIST)
+                img = tf.image.resizeBilinear(img, [28, 28]);
+                
+                // INVERT: Our canvas is Black lines (0) on White (255)
+                // The AI wants White lines (255) on Black (0)
+                // Formula: (255 - pixelValue) / 255
+                img = tf.scalar(255).sub(img).div(tf.scalar(255));
+                
+                // Reshape to [1, 28, 28, 1] (Batch, Width, Height, Channels)
+                return img.expandDims(0);
+            });
+
+            const prediction = await model.predict(tensor);
+            const data = await prediction.data();
+            
+            // Find index of highest value
+            const resultIndex = data.indexOf(Math.max(...data));
+            const confidence = Math.round(data[resultIndex] * 100);
+
+            document.getElementById('status').innerText = 
+                `I think it's a: ${categories[resultIndex]} (${confidence}%)`;
+
+            // Memory cleanup
+            tensor.dispose();
+            prediction.dispose();
+        }
+
+        init();
+    </script>
+</body>
+</html>

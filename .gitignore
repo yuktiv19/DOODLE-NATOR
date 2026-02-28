@@ -1,0 +1,13 @@
+# Data files
+*.npy
+*.zip
+*.bin
+
+# Python artifacts
+__pycache__/
+*.pyc
+venv/
+
+# System files
+.DS_Store
+Thumbs.db
