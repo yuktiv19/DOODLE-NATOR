@@ -2,124 +2,188 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>DOODLE-NATOR AI</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Doodle-Bot AI | Colorful</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Bungee&family=Quicksand:wght@700&display=swap" rel="stylesheet">
     <style>
-        body { font-family: 'Segoe UI', sans-serif; text-align: center; background: #f0f2f5; margin-top: 50px; }
-        #canvas { 
-            border: 5px solid #333; 
-            border-radius: 10px; 
-            background: white; 
-            cursor: crosshair; 
-            touch-action: none; /* Prevents scrolling on mobile while drawing */
+        body { 
+            font-family: 'Quicksand', sans-serif; 
+            margin: 0;
+            overflow: hidden;
+            background: linear-gradient(45deg, #ee7752, #e73c7e, #23a6d5, #23d5ab);
+            background-size: 400% 400%;
+            animation: gradient 15s ease infinite;
+            height: 100vh;
         }
-        .box { margin: 20px auto; padding: 20px; background: white; width: 400px; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-        button { padding: 10px 20px; font-size: 16px; border: none; background: #007bff; color: white; border-radius: 5px; cursor: pointer; margin-top: 10px;}
-        button:hover { background: #0056b3; }
-        #status { color: #333; margin-top: 20px; }
+
+        @keyframes gradient {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        .glass-card {
+            background: rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(15px);
+            border: 2px solid rgba(255, 255, 255, 0.4);
+            box-shadow: 0 20px 50px rgba(0,0,0,0.1);
+        }
+
+        .bungee { font-family: 'Bungee', cursive; }
+
+        /* Floating Agent */
+        .agent-container {
+            animation: float 3s ease-in-out infinite;
+        }
+        @keyframes float {
+            0%, 100% { transform: translateY(0) rotate(-2deg); }
+            50% { transform: translateY(-20px) rotate(2deg); }
+        }
+
+        .eye-glow {
+            box-shadow: 0 0 15px currentColor;
+        }
+
+        #canvas {
+            touch-action: none;
+            cursor: crosshair;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
     </style>
 </head>
-<body>
-    <h1>DOODLE-NATOR</h1>
-    <div class="box">
-        <p>Draw a <b>Cat, Apple, Star, Fish, or House</b></p>
-        <canvas id="canvas" width="280" height="280"></canvas>
-        <br>
-        <button onclick="clearCanvas()">Clear Canvas</button>
-        <h2 id="status">Loading AI...</h2>
+<body class="flex items-center justify-center">
+
+    <div class="max-w-5xl w-full p-6 flex flex-col lg:flex-row items-center gap-10">
+        
+        <div class="glass-card p-6 rounded-[3rem] relative">
+            <h2 class="bungee text-2xl text-white mb-4 text-center tracking-wide">Draw Area</h2>
+            <canvas id="canvas" width="320" height="320" class="bg-white rounded-[2rem] border-8 border-white/50"></canvas>
+            
+            <button id="clearBtn" class="w-full mt-6 bg-yellow-400 hover:bg-yellow-300 text-purple-900 bungee py-4 rounded-2xl text-xl shadow-[0_5px_0_#b8860b] active:translate-y-1 active:shadow-none transition-all">
+                WIPE CLEAN!
+            </button>
+        </div>
+
+        <div class="flex flex-col items-center flex-1">
+            
+            <div class="glass-card p-8 rounded-[2.5rem] mb-8 relative w-full text-center">
+                <div class="absolute -bottom-4 left-1/2 -translate-x-1/2 w-8 h-8 glass-card rotate-45 border-t-0 border-l-0"></div>
+                <p id="speech" class="text-3xl bungee text-white drop-shadow-md">"HI! I'M READY!"</p>
+                <div id="conf-val" class="mt-2 text-white/80 font-bold tracking-widest text-sm">LEVEL: IDLE</div>
+            </div>
+
+            <div class="agent-container">
+                <div id="bot-head" class="w-40 h-32 bg-slate-800 rounded-[3rem] border-8 border-white relative flex items-center justify-center gap-6 transition-colors duration-500">
+                    <div id="eye-l" class="w-5 h-5 bg-cyan-400 rounded-full eye-glow text-cyan-400"></div>
+                    <div id="eye-r" class="w-5 h-5 bg-cyan-400 rounded-full eye-glow text-cyan-400"></div>
+                    
+                    <div class="absolute -top-10 left-1/2 -translate-x-1/2 w-2 h-10 bg-white">
+                        <div class="absolute -top-4 -left-2 w-6 h-6 bg-pink-500 rounded-full animate-pulse shadow-[0_0_15px_pink]"></div>
+                    </div>
+                </div>
+                <div class="w-12 h-6 bg-white/40 mx-auto"></div>
+            </div>
+        </div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest"></script>
-    
     <script>
-        let model;
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d', { willReadFrequently: true });
-        const categories = ['apple', 'star', 'cat', 'fish', 'house'];
+        const speech = document.getElementById('speech');
+        const confVal = document.getElementById('conf-val');
+        const botHead = document.getElementById('bot-head');
+        const eyes = [document.getElementById('eye-l'), document.getElementById('eye-r')];
+        
+        const categories = ['APPLE', 'STAR', 'CAT', 'FISH', 'HOUSE'];
+        let model;
 
-        // 1. Initialise the Canvas and Model
-        async function init() {
-            try {
-                // Remove the './' for better local/GitHub compatibility
-                model = await tf.loadLayersModel('tfjs_model/model.json');
-                document.getElementById('status').innerText = "AI is ready! Start drawing.";
-                console.log("Model Loaded");
-            } catch (err) {
-                document.getElementById('status').innerText = "Model Load Failed: " + err.message;
-                console.error(err);
+        function updateBot(mood) {
+            if (mood === 'happy') {
+                botHead.className = botHead.className.replace(/bg-\w+-800/, 'bg-green-500');
+                eyes.forEach(e => { e.className = "w-5 h-5 bg-white rounded-full eye-glow text-white"; });
+            } else if (mood === 'thinking') {
+                botHead.className = botHead.className.replace(/bg-\w+-500|bg-\w+-800/, 'bg-yellow-500');
+                eyes.forEach(e => { e.className = "w-5 h-5 bg-white rounded-full eye-glow text-white"; });
+            } else {
+                botHead.className = botHead.className.replace(/bg-\w+-500/, 'bg-slate-800');
+                eyes.forEach(e => { e.className = "w-5 h-5 bg-cyan-400 rounded-full eye-glow text-cyan-400"; });
             }
-            
-            // Set canvas background to white explicitly (crucial for prediction)
-            ctx.fillStyle = "white";
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-        }
-
-        // 2. Drawing Logic
-        let drawing = false;
-
-        canvas.addEventListener('mousedown', (e) => { drawing = true; draw(e); });
-        canvas.addEventListener('mouseup', () => { 
-            drawing = false; 
-            ctx.beginPath(); // Reset path so lines don't connect
-            predict(); 
-        });
-        canvas.addEventListener('mousemove', draw);
-
-        function draw(e) {
-            if (!drawing) return;
-            
-            const rect = canvas.getBoundingClientRect();
-            const x = e.clientX - rect.left;
-            const y = e.clientY - rect.top;
-
-            ctx.lineWidth = 14; // Slightly thicker for better AI recognition
-            ctx.lineCap = 'round';
-            ctx.strokeStyle = "black";
-
-            ctx.lineTo(x, y);
-            ctx.stroke();
-            ctx.beginPath();
-            ctx.moveTo(x, y);
         }
 
         function clearCanvas() {
             ctx.fillStyle = "white";
             ctx.fillRect(0, 0, canvas.width, canvas.height);
-            document.getElementById('status').innerText = "Draw something!";
+            ctx.beginPath();
+            speech.innerText = '"DRAW ME A PICTURE!"';
+            confVal.innerText = "LEVEL: IDLE";
+            updateBot('idle');
         }
 
-        // 3. AI Prediction Logic
+        document.getElementById('clearBtn').onclick = clearCanvas;
+
+        let drawing = false;
+        function getXY(e) {
+            const rect = canvas.getBoundingClientRect();
+            const cx = e.touches ? e.touches[0].clientX : e.clientX;
+            const cy = e.touches ? e.touches[0].clientY : e.clientY;
+            return { x: cx - rect.left, y: cy - rect.top };
+        }
+
+        canvas.onmousedown = (e) => { drawing = true; draw(e); };
+        canvas.ontouchstart = (e) => { e.preventDefault(); drawing = true; draw(e); };
+        window.onmouseup = () => { if(drawing) { drawing = false; ctx.beginPath(); predict(); } };
+        window.ontouchend = () => { if(drawing) { drawing = false; ctx.beginPath(); predict(); } };
+        canvas.onmousemove = draw;
+        canvas.ontouchmove = (e) => { e.preventDefault(); draw(e); };
+
+        function draw(e) {
+            if (!drawing) return;
+            const p = getXY(e);
+            ctx.lineWidth = 16;
+            ctx.lineCap = 'round';
+            ctx.strokeStyle = "#333";
+            ctx.lineTo(p.x, p.y);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(p.x, p.y);
+            updateBot('thinking');
+        }
+
+        async function init() {
+            try {
+                model = await tf.loadLayersModel('tfjs_model/model.json');
+                speech.innerText = '"I\'M ALIVE!"';
+                clearCanvas();
+            } catch (err) { speech.innerText = '"BRAIN ERROR!"'; }
+        }
+
         async function predict() {
             if (!model) return;
-
             const tensor = tf.tidy(() => {
-                // Convert canvas pixels to a tensor
-                let img = tf.browser.fromPixels(canvas, 1); 
-                
-                // Resize to 28x28 (standard for QuickDraw/MNIST)
+                let img = tf.browser.fromPixels(canvas, 1);
                 img = tf.image.resizeBilinear(img, [28, 28]);
-                
-                // INVERT: Our canvas is Black lines (0) on White (255)
-                // The AI wants White lines (255) on Black (0)
-                // Formula: (255 - pixelValue) / 255
                 img = tf.scalar(255).sub(img).div(tf.scalar(255));
-                
-                // Reshape to [1, 28, 28, 1] (Batch, Width, Height, Channels)
                 return img.expandDims(0);
             });
 
-            const prediction = await model.predict(tensor);
-            const data = await prediction.data();
-            
-            // Find index of highest value
-            const resultIndex = data.indexOf(Math.max(...data));
-            const confidence = Math.round(data[resultIndex] * 100);
+            const p = await model.predict(tensor);
+            const data = await p.data();
+            const idx = data.indexOf(Math.max(...data));
+            const conf = Math.round(data[idx] * 100);
 
-            document.getElementById('status').innerText = 
-                `I think it's a: ${categories[resultIndex]} (${confidence}%)`;
-
-            // Memory cleanup
+            if (conf > 45) {
+                speech.innerText = `"${categories[idx]}!!?"`;
+                confVal.innerText = `CONFIDENCE: ${conf}%`;
+                updateBot('happy');
+            } else {
+                speech.innerText = '"HM... MORE LINES?"';
+                confVal.innerText = "LEVEL: CONFUSED";
+                updateBot('idle');
+            }
             tensor.dispose();
-            prediction.dispose();
+            p.dispose();
         }
 
         init();
