@@ -87,7 +87,7 @@
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0"></script>
     <script>
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d', { willReadFrequently: true });
@@ -96,7 +96,13 @@
         const botHead = document.getElementById('bot-head');
         const eyes = [document.getElementById('eye-l'), document.getElementById('eye-r')];
         
-        const categories = ['APPLE', 'STAR', 'CAT', 'FISH', 'HOUSE'];
+        const categories = [
+            "apple", "banana", "bread", "cup", "pizza", "ice cream", 
+            "cloud", "sun", "moon", "star", "flower", "tree", "mountain", 
+            "house", "door", "table", "wine bottle", "cell phone", "laptop", 
+            "computer", "wristwatch", "camera", "headphones", "mailbox", 
+            "flashlight", "circle", "square", "triangle", "line", "diamond"
+        ];
         let model;
 
         function updateBot(mood) {
@@ -153,17 +159,72 @@
 
         async function init() {
             try {
-                model = await tf.loadLayersModel('tfjs_model/model.json');
+                model = await tf.loadLayersModel('tfjs_model/model.json?v=2');
                 speech.innerText = '"I\'M ALIVE!"';
                 clearCanvas();
-            } catch (err) { speech.innerText = '"BRAIN ERROR!"'; }
+            } catch (err) { 
+    console.error("MODEL LOAD ERROR:", err);
+    speech.innerText = '"BRAIN ERROR!"'; 
+}
+        }
+
+        function getBoundingBox(ctx, width, height) {
+            const data = ctx.getImageData(0, 0, width, height).data;
+            let minX = width, minY = height, maxX = 0, maxY = 0;
+            let found = false;
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    const r = data[(y * width + x) * 4];
+                    if (r < 200) { 
+                        if (x < minX) minX = x;
+                        if (x > maxX) maxX = x;
+                        if (y < minY) minY = y;
+                        if (y > maxY) maxY = y;
+                        found = true;
+                    }
+                }
+            }
+            if (!found) return null;
+            // Pad the bounding box slightly
+            const pad = 10;
+            return { 
+                x: Math.max(0, minX - pad), 
+                y: Math.max(0, minY - pad), 
+                w: Math.min(width, maxX - minX + 1 + pad * 2), 
+                h: Math.min(height, maxY - minY + 1 + pad * 2) 
+            };
+        }
+
+        function getCenteredCanvas() {
+            const box = getBoundingBox(ctx, canvas.width, canvas.height);
+            if (!box) return canvas;
+            
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = 28;
+            tempCanvas.height = 28;
+            const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
+            tempCtx.fillStyle = "white";
+            tempCtx.fillRect(0, 0, 28, 28);
+            
+            const maxSize = 20;
+            const scale = Math.min(maxSize / box.w, maxSize / box.h);
+            const newW = box.w * scale;
+            const newH = box.h * scale;
+            const dx = (28 - newW) / 2;
+            const dy = (28 - newH) / 2;
+            
+            tempCtx.drawImage(canvas, box.x, box.y, box.w, box.h, dx, dy, newW, newH);
+            return tempCanvas;
         }
 
         async function predict() {
             if (!model) return;
+            const processedCanvas = getCenteredCanvas();
             const tensor = tf.tidy(() => {
-                let img = tf.browser.fromPixels(canvas, 1);
-                img = tf.image.resizeBilinear(img, [28, 28]);
+                let img = tf.browser.fromPixels(processedCanvas, 1);
+                if (processedCanvas === canvas) {
+                    img = tf.image.resizeBilinear(img, [28, 28]);
+                }
                 img = tf.scalar(255).sub(img).div(tf.scalar(255));
                 return img.expandDims(0);
             });
@@ -177,6 +238,22 @@
                 speech.innerText = `"${categories[idx]}!!?"`;
                 confVal.innerText = `CONFIDENCE: ${conf}%`;
                 updateBot('happy');
+                // PRODUCTIVE ACTIONS BASED ON SHAPE
+    const detected = categories[idx];
+    if (conf > 80) { // Only trigger for high confidence
+        if (detected === "flashlight") {
+            document.body.style.filter = "brightness(2)"; // Visual feedback
+            setTimeout(() => document.body.style.filter = "brightness(1)", 2000);
+        }
+        if (detected === "cell phone") {
+            if(confirm("Do you want to open the emergency dialer?")) {
+                window.location.href = "tel:911";
+            }
+        }
+        if (detected === "mailbox") {
+            window.location.href = "mailto:support@example.com?subject=Help Requested";
+        }
+    }
             } else {
                 speech.innerText = '"HM... MORE LINES?"';
                 confVal.innerText = "LEVEL: CONFUSED";
